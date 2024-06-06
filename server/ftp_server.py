@@ -1,12 +1,21 @@
 import socket
 import threading
 import os
+import socket
+import threading
 
 INTERFACE, SPORT = 'localhost', 8080
 CHUNK = 100
-
+PASSWORD = "mypassword"  # Set your desired password here
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MYFILES_DIR = os.path.join(SCRIPT_DIR, 'myfiles')
 # os.chdir('myfiles')
 
+
+def to_hex(number):
+    # Verify our assumption: error is printed and program exists if assumption is violated
+    assert number <= 0xffffffff, "Number too large"
+    return "{:08x}".format(number)
 
 ##################################
 # TODO: Implement me for Part 1! #
@@ -50,30 +59,120 @@ def receive_long_message(conn):
     
     return full_data.decode()
 
-PASSWORD = "mypassword"  # Set your desired password here
+def send_long_message(conn, message):
+    
+    # TODO: Remove the line below when you start implementing this function!
+    # raise NotImplementedError("Not implemented yet!")
+
+    # TODO: Send the length of the message: this should be 8 total hexadecimal digits
+    #       This means that ffffffff hex -> 4294967295 dec
+    #       is the maximum message length that we can send with this method!
+    #       hint: you may use the helper function `to_hex`. Don't forget to encode before sending!
+
+    message_lenght = len(message.encode())
+
+    assert message_lenght <= 0xffffffff, "Message too large for this protocol..."
+
+    message_lenght_hex = to_hex(message_lenght)
+
+    # Send lenght
+    conn.sendall(message_lenght_hex.encode())
+
+    # TODO: Send the message itself to the server. Don't forget to encode before sending!
+    
+    # Send encoded message
+    conn.sendall(message.encode())
+
+
+def list_files(conn):
+    try:
+        files = os.listdir(MYFILES_DIR)
+        files_list = "\n".join(files)
+        send_long_message(conn, "ACK\n" + files_list)
+    except Exception as e:
+        send_long_message(conn, f"NAK {str(e)}")
+
+def put_file(conn, filename):
+    try:
+        filepath = os.path.join(MYFILES_DIR, filename)
+        file_content = receive_long_message(conn)
+        with open(filepath, 'wb') as file:
+            file.write(file_content.encode())
+        send_long_message(conn, "ACK File uploaded successfully")
+    except Exception as e:
+        send_long_message(conn, f"NAK {str(e)}")
+
+def get_file(conn, filename):
+    try:
+        filepath = os.path.join(MYFILES_DIR, filename)
+        if not os.path.exists(filepath):
+            send_long_message(conn, "NAK File not found")
+            return
+
+        with open(filepath, 'rb') as file:
+            file_content = file.read().decode()
+        send_long_message(conn, "ACK")
+        send_long_message(conn, file_content)
+    except Exception as e:
+        send_long_message(conn, f"NAK {str(e)}")
+
+def remove_file(conn, filename):
+    try:
+        filepath = os.path.join(MYFILES_DIR, filename)
+        if not os.path.exists(filepath):
+            send_long_message(conn, "NAK File not found")
+            return
+
+        os.remove(filepath)
+        send_long_message(conn, "ACK File removed successfully")
+    except Exception as e:
+        send_long_message(conn, f"NAK {str(e)}")
+
 
 def handle_client(conn):
-    password = conn.recv(1024).decode().strip()
-
+    conn.sendall("Password required...".encode())
     incorrect_attempts = 0
 
     while incorrect_attempts < 3:
+        password = receive_long_message(conn)
         if password == PASSWORD:
+            send_long_message(conn, "ACK Password is correct")
             send_intro_message(conn)  # Call the send_intro_message function
-            message = receive_long_message(conn)
-            print("Message from client:", message)
-            conn.sendall(str.encode("Password is correct."))
             break
         else:
             incorrect_attempts += 1
-            conn.sendall(str.encode("Incorrect password. Please try again: "))
-            password = conn.recv(1024).decode().strip()
+            if incorrect_attempts == 3:
+                print("Too many incorrect password attempts. Closing connection.")
+                send_long_message(conn, "NACK Too many incorrect password attempts. Connection closed.")
+                conn.close()
+                return
+            else:
+                send_long_message(conn, "NAK Incorrect password. Please try again...")
 
-    if incorrect_attempts == 3:
-        print("Too many incorrect password attempts. Closing connection.")
-        conn.sendall(str.encode("Too many incorrect password attempts. Connection closed."))
-    
+    while True:
+        command = receive_long_message(conn)
+        if command == "close":
+            send_long_message(conn, "ACK")
+            conn.close()
+            break
+        elif command == "list":
+            list_files(conn)
+        elif command.startswith("put "):
+            filename = command[4:]
+            put_file(conn, filename) 
+        elif command.startswith("get "):
+            filename = command[4:]
+            get_file(conn, filename)
+        elif command.startswith("remove "):
+            filename = command[7:]
+            remove_file(conn, filename)
+        else:
+            send_long_message(conn, "NAK Unknown command")
+
+    # Close the connection
     conn.close()
+
+    
 
 def main():
     # Configure a socket object to use IPv4 and TCP
