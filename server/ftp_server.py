@@ -112,7 +112,9 @@ def get_file(conn, filename):
         with open(filepath, 'rb') as file:
             file_content = file.read().decode()
         send_long_message(conn, "ACK")
-        send_long_message(conn, file_content)
+        confirm_ack = receive_long_message(conn)
+        if confirm_ack == "ACK":
+            send_long_message(conn, file_content)
     except Exception as e:
         send_long_message(conn, f"NAK {str(e)}")
 

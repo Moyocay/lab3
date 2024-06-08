@@ -105,7 +105,7 @@ def get_file(conn, filename):
     if response.startswith("NAK"):
         print(response)
         return
-
+    send_long_message(conn, "ACK")
     file_content = receive_long_message(conn)
     filepath = os.path.join('myfiles', filename)
     with open(filepath, 'wb') as file:
