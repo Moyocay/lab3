@@ -146,6 +146,7 @@ def main():
 
             if password_response.startswith("ACK"):
                 isAuth = True
+                send_long_message(conn, "ACK")
                 break
             elif password_response.startswith("NACK"):
                 return 0

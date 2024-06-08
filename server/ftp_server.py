@@ -137,7 +137,9 @@ def handle_client(conn):
         password = receive_long_message(conn)
         if password == PASSWORD:
             send_long_message(conn, "ACK Password is correct")
-            send_intro_message(conn)  # Call the send_intro_message function
+            confirm_ack = receive_long_message(conn)
+            if confirm_ack == "ACK":
+                send_intro_message(conn)  # Call the send_intro_message function
             break
         else:
             incorrect_attempts += 1
